@@ -4,12 +4,14 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateAIResponse, getSiteContext } from '@/services/aiService';
 import logger from '@/services/logService';
+import { useResponse } from '@/context/ResponseContext';
 
 interface VoiceAssistantProps {
   onStatusChange?: (status: string) => void;
 }
 
 const VoiceAssistant = ({ onStatusChange }: VoiceAssistantProps) => {
+  const { setAiResponse, setTranscript: setContextTranscript } = useResponse();
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [status, setStatus] = useState('Inactif');
@@ -109,6 +111,7 @@ const VoiceAssistant = ({ onStatusChange }: VoiceAssistantProps) => {
           const current = event.resultIndex;
           const result = event.results[current][0].transcript;
           setTranscript(result);
+          setContextTranscript(result);
           
           // Si le résultat est final, traiter la commande
           if (event.results[current].isFinal) {
@@ -167,7 +170,7 @@ const VoiceAssistant = ({ onStatusChange }: VoiceAssistantProps) => {
         startListening();
 
         // Message de bienvenue
-        speak('Bonjour, je suis votre assistant vocal. Comment puis-je vous aider?');
+        displayResponse('Bonjour, je suis votre assistant. Comment puis-je vous aider?');
       } else {
         updateStatus('La reconnaissance vocale n\'est pas prise en charge par ce navigateur');
         console.error('La reconnaissance vocale n\'est pas prise en charge par ce navigateur');
@@ -281,18 +284,33 @@ const VoiceAssistant = ({ onStatusChange }: VoiceAssistantProps) => {
     }
   };
 
-  const speak = (text: string) => {
+  const displayResponse = (text: string, cancelPrevious: boolean = false) => {
+    // Mettre à jour le contexte avec la réponse
+    setAiResponse(text);
+    logger.info(`Réponse affichée: ${text}`);
+    logger.info(`Réponse affichée (${text.length} caractères)`);
+    
+    // Ajouter la synthèse vocale
     if (synthRef.current) {
-      // Annuler toute synthèse vocale en cours
-      synthRef.current.cancel();
-      logger.debug('Synthèse vocale: préparation de la réponse');
-
+      // Annuler toute synthèse vocale précédente si demandé
+      if (cancelPrevious) {
+        synthRef.current.cancel();
+      }
+      
+      // Créer un nouvel objet d'énoncé
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'fr-FR';
+      utterance.lang = 'fr-FR'; // Définir la langue en français
+      utterance.rate = 1.0; // Vitesse normale
+      utterance.pitch = 1.0; // Tonalité normale
+      
+      // Lancer la synthèse vocale
       synthRef.current.speak(utterance);
-      logger.info(`Réponse vocale envoyée (${text.length} caractères)`);
+      logger.info('Synthèse vocale démarrée');
     }
   };
+  
+  // Alias pour maintenir la compatibilité avec le code existant
+  const speak = displayResponse;
 
   // Fonction pour exécuter un script JavaScript généré par l'IA
   const executeScript = (script: string | undefined) => {
@@ -347,8 +365,15 @@ const VoiceAssistant = ({ onStatusChange }: VoiceAssistantProps) => {
       // Appeler l'API IA pour générer une réponse
       updateStatus('Traitement de votre demande...');
       logger.info('Appel à l\'API IA pour générer une réponse');
-      const aiResponse = await generateAIResponse(command, siteContext);
       
+      // Créer une variable pour stocker la réponse complète
+      let fullResponse = '';
+      
+      // Définir un callback pour traiter les morceaux de réponse en stream
+      
+      // Appeler generateAIResponse avec le callback de streaming
+      const aiResponse = await generateAIResponse(command, siteContext);
+      console.log("Réponse de l'IA: ",aiResponse.content);
       // Vérifier si nous sommes passés en mode hors ligne à cause d'erreurs 429
       if (aiResponse.content.includes("mode limité") || aiResponse.content.includes("Je suis désolé, je ne peux pas accéder")) {
         setOfflineMode(true);
@@ -361,8 +386,10 @@ const VoiceAssistant = ({ onStatusChange }: VoiceAssistantProps) => {
         logger.info('Mode en ligne rétabli après réception d\'une réponse normale');
       }
       
-      // Prononcer la réponse générée
-      speak(aiResponse.content);
+      // Afficher la réponse complète
+      if (fullResponse.length === 0) {
+        displayResponse(aiResponse.content, true);
+      }
       
       // Exécuter le script si présent
       if (aiResponse.script) {

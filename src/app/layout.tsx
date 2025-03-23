@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import VoiceAssistantWrapper from '@/components/VoiceAssistantWrapper';
+import { ResponseProvider } from '@/context/ResponseContext';
+import Navigation from '@/components/Navigation';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,8 +32,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
-        <VoiceAssistantWrapper />
+        <ResponseProvider>
+          <Navigation />
+          <main>
+            {children}
+          </main>
+          <VoiceAssistantWrapper />
+        </ResponseProvider>
       </body>
     </html>
   );
