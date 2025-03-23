@@ -85,7 +85,19 @@ export default function ChatPage() {
       // Exécuter le script si présent
       if (aiResponse.script) {
         logger.debug('Script détecté dans la réponse IA');
-        // Ici, on pourrait implémenter l'exécution du script si nécessaire
+        try {
+          // Créer un élément script et l'ajouter au DOM pour l'exécuter
+          const scriptElement = document.createElement('script');
+          scriptElement.text = aiResponse.script;
+          document.body.appendChild(scriptElement);
+          
+          // Supprimer l'élément script après exécution
+          document.body.removeChild(scriptElement);
+          
+          logger.info('Script exécuté avec succès');
+        } catch (scriptError) {
+          logger.error('Erreur lors de lexécution du script:', scriptError);
+        }
       }
       
       logger.operationEnd('Traitement de message textuel', true);

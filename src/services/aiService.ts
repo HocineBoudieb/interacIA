@@ -13,6 +13,7 @@ interface OllamaResponse {
     content: string;
   };
   done: boolean;
+  script?: string; // Script JavaScript optionnel extrait de la réponse
 }
 
 // Type pour la réponse de l'IA à renvoyer au composant VoiceAssistant
@@ -86,9 +87,10 @@ export const generateAIResponse = async (command: string, context: string): Prom
     
     logger.operationEnd('Génération de réponse IA', true);
 
-    // Renvoyer la réponse de l'IA
+    // Renvoyer la réponse de l'IA avec le contenu textuel et le script JavaScript
     return {
       content: response.message.content,
+      script: response.script
     };
   } catch (error) {
     logger.error('Erreur lors de la génération de la réponse IA:', error);
@@ -112,7 +114,7 @@ async function queryOllama(data: { question: string; context: string }): Promise
   
   try {
     // Construire le prompt avec le préprompt, le contexte et la question
-    const preprompt = `Tu es un assistant IA sur un site web. Tu dois répondre dans ce format précis: {response:'ta réponse textuelle ici',script:'code JavaScript exécutable ici'}. Le script doit être du JavaScript valide qui affiche une fenêtre modale lorsqu'il est exécuté. N'utilise pas de backticks dans ton script pour éviter les problèmes de parsing.`;
+    const preprompt = `Tu es un assistant IA sur un site web. Tu dois répondre dans ce format précis: {response:'ta réponse textuelle ici',script:'code JavaScript exécutable ici'}. Le script doit être du JavaScript valide qui crée agie sur la page de manière dynamique, tu peux faire une page modale en y mettant du contenu pertinant par rapport à la question, ou agir directement sur la page en rajoutant des choses, changeant du texte des couleurs etc. Le script doit créer tous les éléments nécessaires et gérer les styles. N'utilise pas de balises <script> dans ta réponse. N'utilise pas de backticks dans ton script pour éviter les problèmes de parsing. Il faut absolument que tu respectes le format de réponse demandé.`;
     const prompt = `${preprompt}\n\nContexte: ${data.context}\n\nQuestion: ${data.question}`;
     const data_json = {
       model: 'llama3.2',
@@ -205,7 +207,36 @@ async function queryOllama(data: { question: string; context: string }): Promise
     
     logger.debug('Réponse de l\'API Ollama reçue avec succès');
     console.log("finalResponse: ",finalResponse.message.content);
-    return finalResponse;
+    
+    // Extraire la réponse textuelle et le script JavaScript du contenu
+    let responseText = finalResponse.message.content;
+    let scriptCode = undefined;
+    
+    // Utiliser une regex pour extraire le format {response:'texte',script:'code'}
+    const responsePattern = /{s*responses*:\s*['"](.+?)['"]\s*,\s*script\s*:\s*['"](.+?)['"]\s*}/s;
+    const match = finalResponse.message.content.match(responsePattern);
+    
+    // In the queryOllama function, update the script handling:
+    if (match) {
+      responseText = match[1]; // Le texte de la réponse
+      scriptCode = match[2]; // Le code du script
+      logger.debug('Format de réponse JSON détecté et parsé avec succès');
+      logger.debug(`Réponse textuelle extraite: ${responseText.substring(0, 50)}...`);
+      logger.debug(`Script JavaScript extrait: ${scriptCode ? scriptCode.substring(0, 50) + '...' : 'aucun'}`);
+      
+      // Mettre à jour le contenu de la réponse finale avec seulement le texte
+      finalResponse.message.content = responseText;
+    } else {
+      logger.warn('Format de réponse JSON non détecté, utilisation du contenu brut');
+    }
+    
+    // Créer un objet OllamaResponse modifié avec le script extrait
+    const modifiedResponse = {
+      ...finalResponse,
+      script: scriptCode
+    };
+    
+    return modifiedResponse;
   } catch (error) {
     logger.error('Erreur lors de l\'appel à l\'API Ollama:', error);
     throw error;
